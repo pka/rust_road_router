@@ -5,6 +5,7 @@ use std::sync::{Arc, Barrier};
 use std::sync::atomic::compiler_fence;
 use std::sync::atomic::Ordering::SeqCst;
 use std::ops::Deref;
+use std::ops::{Generator, GeneratorState};
 
 use shortest_path::timestamped_vector::TimestampedVector;
 
@@ -48,67 +49,76 @@ impl Server {
         let forward_query_barrier = Arc::new(Barrier::new(2));
         let backward_query_barrier = forward_query_barrier.clone();
 
-        thread::spawn(move || {
-            let mut dijkstra = SteppedDijkstra::new(graph);
+        // thread::spawn(move || {
+        //     let mut dijkstra = SteppedDijkstra::new(graph);
 
-            unsafe { *forward_distances_pointer.pointer = dijkstra.distances_pointer() };
-            compiler_fence(SeqCst);
+        //     unsafe { *forward_distances_pointer.pointer = dijkstra.distances_pointer() };
+        //     compiler_fence(SeqCst);
 
-            loop {
-                match forward_query_receiver.recv() {
-                    Ok((ServerControl::Query(query), active_query_id)) => {
-                        dijkstra.initialize_query(query);
+        //     loop {
+        //         match forward_query_receiver.recv() {
+        //             Ok((ServerControl::Query(query), active_query_id)) => {
+        //                 let coroutine = dijkstra.query_generator(query);
 
-                        forward_query_barrier.wait();
+        //                 forward_query_barrier.wait();
 
-                        loop {
-                            match forward_query_receiver.try_recv() {
-                                Ok((ServerControl::Break, query_id)) if active_query_id == query_id => break,
-                                Ok((ServerControl::Query(_), query_id)) => panic!("forward received new query {} while still processing {}", query_id, active_query_id),
-                                _ => ()
-                            }
+        //                 loop {
+        //                     match forward_query_receiver.try_recv() {
+        //                         Ok((ServerControl::Break, query_id)) if active_query_id == query_id => break,
+        //                         Ok((ServerControl::Query(_), query_id)) => panic!("forward received new query {} while still processing {}", query_id, active_query_id),
+        //                         _ => ()
+        //                     }
 
-                            let progress = dijkstra.next_step();
-                            forward_progress_sender.send((progress.clone(), active_query_id)).unwrap();
-                            if let QueryProgress::Done(_) = progress { break }
-                        }
-                    },
-                    Ok((ServerControl::Break, _)) => (),
-                    Ok((ServerControl::Shutdown, _)) | Err(_) => break
-                }
-            }
-        });
+        //                     let progress = coroutine.resume();
+        //                     match coroutine.resume() {
+        //                         GeneratorState::Yielded(progress) => {
 
-        thread::spawn(move || {
-            let mut dijkstra = SteppedDijkstra::new(Box::new(reversed));
+        //                         },
+        //                         GeneratorState::Complete(result) => {
+        //                             progress_sender.send(QueryProgress::Done(result)).unwrap();
+        //                             break
+        //                         }
+        //                     }
+        //                     forward_progress_sender.send((progress.clone(), active_query_id)).unwrap();
+        //                     if let QueryProgress::Done(_) = progress { break }
+        //                 }
+        //             },
+        //             Ok((ServerControl::Break, _)) => (),
+        //             Ok((ServerControl::Shutdown, _)) | Err(_) => break
+        //         }
+        //     }
+        // });
 
-            unsafe { *backward_distances_pointer.pointer = dijkstra.distances_pointer() };
-            compiler_fence(SeqCst);
+        // thread::spawn(move || {
+        //     let mut dijkstra = SteppedDijkstra::new(Box::new(reversed));
 
-            loop {
-                match backward_query_receiver.recv() {
-                    Ok((ServerControl::Query(query), active_query_id)) => {
-                        dijkstra.initialize_query(query);
+        //     unsafe { *backward_distances_pointer.pointer = dijkstra.distances_pointer() };
+        //     compiler_fence(SeqCst);
 
-                        backward_query_barrier.wait();
+        //     loop {
+        //         match backward_query_receiver.recv() {
+        //             Ok((ServerControl::Query(query), active_query_id)) => {
+        //                 dijkstra.initialize_query(query);
 
-                        loop {
-                            match backward_query_receiver.try_recv() {
-                                Ok((ServerControl::Break, query_id)) if active_query_id == query_id => break,
-                                Ok((ServerControl::Query(_), query_id)) => panic!("backward received new query {} while still processing {}", query_id, active_query_id),
-                                _ => ()
-                            }
+        //                 backward_query_barrier.wait();
 
-                            let progress = dijkstra.next_step();
-                            backward_progress_sender.send((progress.clone(), active_query_id)).unwrap();
-                            if let QueryProgress::Done(_) = progress { break }
-                        }
-                    },
-                    Ok((ServerControl::Break, _)) => (),
-                    Ok((ServerControl::Shutdown, _)) | Err(_) => break
-                }
-            }
-        });
+        //                 loop {
+        //                     match backward_query_receiver.try_recv() {
+        //                         Ok((ServerControl::Break, query_id)) if active_query_id == query_id => break,
+        //                         Ok((ServerControl::Query(_), query_id)) => panic!("backward received new query {} while still processing {}", query_id, active_query_id),
+        //                         _ => ()
+        //                     }
+
+        //                     let progress = dijkstra.next_step();
+        //                     backward_progress_sender.send((progress.clone(), active_query_id)).unwrap();
+        //                     if let QueryProgress::Done(_) = progress { break }
+        //                 }
+        //             },
+        //             Ok((ServerControl::Break, _)) => (),
+        //             Ok((ServerControl::Shutdown, _)) | Err(_) => break
+        //         }
+        //     }
+        // });
 
         Server {
             forward_query_sender,

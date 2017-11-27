@@ -1,6 +1,7 @@
 use super::*;
 
 use std::ops::Deref;
+use std::ops::{Generator, GeneratorState};
 
 #[derive(Debug)]
 pub struct Server {
@@ -19,13 +20,13 @@ impl Server {
             loop {
                 match query_receiver.recv() {
                     Ok(ServerControl::Query(query)) => {
-                        dijkstra.initialize_query(query);
+                        let mut coroutine = dijkstra.query_generator(query);
 
                         loop {
-                            match dijkstra.next_step() {
-                                QueryProgress::Progress(_) => (),
-                                progress @ QueryProgress::Done(_) => {
-                                    progress_sender.send(progress).unwrap();
+                            match coroutine.resume() {
+                                GeneratorState::Yielded(_) => (),
+                                GeneratorState::Complete(result) => {
+                                    progress_sender.send(QueryProgress::Done(result)).unwrap();
                                     break
                                 }
                             }

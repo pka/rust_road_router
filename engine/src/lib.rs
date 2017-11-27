@@ -2,6 +2,8 @@
 #![feature(const_fn)]
 #![feature(allocator_api)]
 #![feature(const_size_of)]
+#![feature(conservative_impl_trait)]
+#![feature(generators, generator_trait)]
 
 extern crate nav_types;
 extern crate postgres;

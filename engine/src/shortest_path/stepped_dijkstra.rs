@@ -2,6 +2,7 @@ use super::*;
 use std::ops::Deref;
 use index_heap::{IndexdMinHeap, Indexing};
 use super::timestamped_vector::TimestampedVector;
+use std::ops::Generator;
 
 #[derive(Debug, Clone)]
 pub enum QueryProgress {
@@ -27,10 +28,6 @@ pub struct SteppedDijkstra<Graph: DijkstrableGraph, C: Deref<Target = Graph>> {
     distances: TimestampedVector<Weight>,
     predecessors: Vec<NodeId>,
     closest_node_priority_queue: IndexdMinHeap<State>,
-    // the current query
-    query: Option<Query>,
-    // first option: algorithm finished? second option: final result of algorithm
-    result: Option<Option<Weight>>
 }
 
 impl<Graph: DijkstrableGraph, C: Deref<Target = Graph>> SteppedDijkstra<Graph, C> {
@@ -42,73 +39,60 @@ impl<Graph: DijkstrableGraph, C: Deref<Target = Graph>> SteppedDijkstra<Graph, C
             // initialize tentative distances to INFINITY
             distances: TimestampedVector::new(n, INFINITY),
             predecessors: vec![n as NodeId; n],
-            closest_node_priority_queue: IndexdMinHeap::new(n),
-            query: None,
-            result: None
+            closest_node_priority_queue: IndexdMinHeap::new(n)
         }
     }
 
-    pub fn initialize_query(&mut self, query: Query) {
-        let from = query.from;
-        // initialize
-        self.query = Some(query);
-        self.result = None;
-        self.closest_node_priority_queue.clear();
-        self.distances.reset();
+    pub fn query_generator<'a, 'b: 'a>(&'b mut self, query: Query) -> impl Generator<Yield=State, Return=Option<Weight>> + 'a {
+        move || {
+            self.closest_node_priority_queue.clear();
+            self.distances.reset();
 
-        // Starte with origin
-        self.distances.set(from as usize, 0);
-        self.closest_node_priority_queue.push(State { distance: 0, node: from });
-    }
-
-    pub fn next_step(&mut self) -> QueryProgress {
-        match self.result {
-            Some(result) => QueryProgress::Done(result),
-            None => {
-                self.settle_next_node()
-            }
-        }
-    }
-
-    fn settle_next_node(&mut self) -> QueryProgress {
-        let to = self.query.as_ref().expect("query was not initialized properly").to;
-
-        // Examine the frontier with lower distance nodes first (min-heap)
-        if let Some(State { distance, node }) = self.closest_node_priority_queue.pop() {
-            // Alternatively we could have continued to find all shortest paths
-            if node == to {
-                self.result = Some(Some(distance));
-                return QueryProgress::Done(Some(distance));
-            }
+            // Start with origin
+            self.distances.set(query.from as usize, 0);
+            self.closest_node_priority_queue.push(State { distance: 0, node: query.from });
 
             // these are necessary because otherwise the borrow checker could not figure out
             // that we're only borrowing parts of self
             let closest_node_priority_queue = &mut self.closest_node_priority_queue;
             let distances = &mut self.distances;
             let predecessors = &mut self.predecessors;
+            let graph = &self.graph;
 
-            // For each node we can reach, see if we can find a way with
-            // a lower distance going through this node
-            self.graph.for_each_neighbor(node, &mut |edge: Link| {
-                let next = State { distance: distance + edge.weight, node: edge.node };
+            // Examine the frontier with lower distance nodes first (min-heap)
+            loop {
+                let next = closest_node_priority_queue.pop();
 
-                // If so, add it to the frontier and continue
-                if next.distance < distances[next.node as usize] {
-                    // Relaxation, we have now found a better way
-                    distances.set(next.node as usize, next.distance);
-                    predecessors[next.node as usize] = node;
-                    if closest_node_priority_queue.contains_index(next.as_index()) {
-                        closest_node_priority_queue.decrease_key(next);
-                    } else {
-                        closest_node_priority_queue.push(next);
+                if let Some(State { distance, node }) = next {
+                    // Alternatively we could have continued to find all shortest paths
+                    if node == query.to {
+                        return Some(distance);
                     }
-                }
-            });
 
-            QueryProgress::Progress(State { distance, node })
-        } else {
-            self.result = Some(None);
-            QueryProgress::Done(None)
+
+                    // For each node we can reach, see if we can find a way with
+                    // a lower distance going through this node
+                    graph.for_each_neighbor(node, &mut |edge: Link| {
+                        let next = State { distance: distance + edge.weight, node: edge.node };
+
+                        // If so, add it to the frontier and continue
+                        if next.distance < distances[next.node as usize] {
+                            // Relaxation, we have now found a better way
+                            distances.set(next.node as usize, next.distance);
+                            predecessors[next.node as usize] = node;
+                            if closest_node_priority_queue.contains_index(next.as_index()) {
+                                closest_node_priority_queue.decrease_key(next);
+                            } else {
+                                closest_node_priority_queue.push(next);
+                            }
+                        }
+                    });
+
+                    yield State { distance, node };
+                } else {
+                    return None;
+                }
+            }
         }
     }
 
@@ -122,10 +106,6 @@ impl<Graph: DijkstrableGraph, C: Deref<Target = Graph>> SteppedDijkstra<Graph, C
 
     pub fn predecessor(&self, node: NodeId) -> NodeId {
         self.predecessors[node as usize]
-    }
-
-    pub fn query(&self) -> Query {
-        self.query.unwrap()
     }
 
     pub fn graph(&self) -> &Graph {

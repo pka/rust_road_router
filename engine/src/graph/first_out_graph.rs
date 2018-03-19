@@ -65,7 +65,7 @@ impl<FirstOutContainer, HeadContainer, WeightContainer> FirstOutGraph<FirstOutCo
 pub type OwnedGraph = FirstOutGraph<Vec<EdgeId>, Vec<NodeId>, Vec<Weight>>;
 
 impl OwnedGraph {
-    pub fn from_adjancecy_lists(adjancecy_lists: Vec<Vec<Link>>) -> OwnedGraph {
+    pub fn from_adjancecy_lists(adjancecy_lists: Vec<Vec<LinkData>>) -> OwnedGraph {
         // create first_out array by doing a prefix sum over the adjancecy list sizes
         let first_out = {
             let degrees = adjancecy_lists.iter().map(|neighbors| neighbors.len() as EdgeId);
@@ -75,7 +75,7 @@ impl OwnedGraph {
         // append all adjancecy list and split the pairs into two seperate vectors
         let (head, weight) = adjancecy_lists
             .into_iter()
-            .flat_map(|neighbors| neighbors.into_iter().map(|Link { node, weight }| (node, weight) ) )
+            .flat_map(|neighbors| neighbors.into_iter().map(|LinkData { node, weight }| (node, weight) ) )
             .unzip();
 
         OwnedGraph::new(first_out, head, weight)
@@ -107,13 +107,14 @@ impl<'a, FirstOutContainer, HeadContainer, WeightContainer> LinkIterGraph<'a> fo
     HeadContainer: AsSlice<NodeId>,
     WeightContainer: AsSlice<Weight>,
 {
-    type Iter = std::iter::Map<std::iter::Zip<std::slice::Iter<'a, NodeId>, std::slice::Iter<'a, Weight>>, fn((&NodeId, &Weight))->Link>;
+    type Link = LinkData;
+    type Iter = std::iter::Map<std::iter::Zip<std::slice::Iter<'a, NodeId>, std::slice::Iter<'a, Weight>>, fn((&NodeId, &Weight))->LinkData>;
 
     fn neighbor_iter(&'a self, node: NodeId) -> Self::Iter {
         let range = self.neighbor_edge_indices_usize(node);
         self.head()[range.clone()].iter()
             .zip(self.weight()[range].iter())
-            .map( |(&neighbor, &weight)| Link { node: neighbor, weight: weight } )
+            .map( |(&neighbor, &weight)| LinkData { node: neighbor, weight: weight } )
     }
 }
 
@@ -135,13 +136,13 @@ impl<FirstOutContainer, HeadContainer, WeightContainer> RandomLinkAccessGraph fo
     HeadContainer: AsSlice<NodeId>,
     WeightContainer: AsSlice<Weight>,
 {
-    fn link(&self, edge_id: EdgeId) -> Link {
-        Link { node: self.head()[edge_id as usize], weight: self.weight()[edge_id as usize] }
+    fn link(&self, edge_id: EdgeId) -> LinkData {
+        LinkData { node: self.head()[edge_id as usize], weight: self.weight()[edge_id as usize] }
     }
 
     fn edge_index(&self, from: NodeId, to: NodeId) -> Option<EdgeId> {
         let first_out = self.first_out()[from as usize] as usize;
-        self.neighbor_iter(from).enumerate().find(|&(_, Link { node, .. })| node == to).map(|(i, _)| (first_out + i) as EdgeId )
+        self.neighbor_iter(from).enumerate().find(|&(_, LinkData { node, .. })| node == to).map(|(i, _)| (first_out + i) as EdgeId )
     }
 
     fn neighbor_edge_indices(&self, node: NodeId) -> Range<EdgeId> {

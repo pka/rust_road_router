@@ -2,7 +2,14 @@ use std::collections::LinkedList;
 use super::*;
 
 #[derive(Debug)]
-pub struct Server<G: for<'a> LinkIterGraph<'a>, H: for<'a> LinkIterGraph<'a>> {
+pub struct Server<G, H>
+where
+    G: for<'a> LinkIterGraph<'a>,
+    <G as LinkIterGraph<'static>>::Link: LinkWithStaticWeight,
+    H: for<'a> LinkIterGraph<'a>,
+    <H as LinkIterGraph<'static>>::Link: LinkWithStaticWeight
+{
+
     pub forward_dijkstra: SteppedDijkstra<G>,
     pub backward_dijkstra: SteppedDijkstra<H>,
     pub tentative_distance: Weight,
@@ -10,7 +17,11 @@ pub struct Server<G: for<'a> LinkIterGraph<'a>, H: for<'a> LinkIterGraph<'a>> {
     pub meeting_node: NodeId
 }
 
-impl<G: for<'a> LinkIterGraph<'a>> Server<G, OwnedGraph> {
+impl<G> Server<G, OwnedGraph>
+where
+    G: for<'a> LinkIterGraph<'a> + 'static,
+    <G as LinkIterGraph<'static>>::Link: LinkWithStaticWeight,
+{
     pub fn new(graph: G) -> Server<G, OwnedGraph> {
         let reversed = graph.reverse();
 
@@ -24,7 +35,13 @@ impl<G: for<'a> LinkIterGraph<'a>> Server<G, OwnedGraph> {
     }
 }
 
-impl<G: for<'a> LinkIterGraph<'a>, H: for<'a> LinkIterGraph<'a>> Server<G, H> {
+impl<G, H> Server<G, H>
+where
+    G: for<'a> LinkIterGraph<'a>,
+    <G as LinkIterGraph<'static>>::Link: LinkWithStaticWeight,
+    H: for<'a> LinkIterGraph<'a>,
+    <H as LinkIterGraph<'static>>::Link: LinkWithStaticWeight
+{
     pub fn distance(&mut self, from: NodeId, to: NodeId) -> Option<Weight> {
         // initialize
         self.tentative_distance = INFINITY;

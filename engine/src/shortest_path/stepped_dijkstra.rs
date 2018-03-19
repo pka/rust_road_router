@@ -21,7 +21,15 @@ impl Indexing for State {
 }
 
 #[derive(Debug)]
-pub struct SteppedDijkstra<Graph: for<'a> LinkIterGraph<'a>> {
+pub struct SteppedDijkstra<Graph>
+where
+    Graph: for<'a> LinkIterGraph<'a>,
+    // taken from
+    // https://users.rust-lang.org/t/higher-ranked-trait-bounds-and-associated-types-of-type-parameters/288
+    // https://github.com/rust-lang/rfcs/pull/528
+    // 'static is weird, but I suppose ok for now...
+    <Graph as LinkIterGraph<'static>>::Link: LinkWithStaticWeight
+{
     graph: Graph,
     distances: TimestampedVector<Weight>,
     predecessors: Vec<NodeId>,
@@ -32,7 +40,11 @@ pub struct SteppedDijkstra<Graph: for<'a> LinkIterGraph<'a>> {
     result: Option<Option<Weight>>
 }
 
-impl<Graph: for<'a> LinkIterGraph<'a>> SteppedDijkstra<Graph> {
+impl<Graph> SteppedDijkstra<Graph>
+where
+    Graph: for<'a> LinkIterGraph<'a>,
+    <Graph as LinkIterGraph<'static>>::Link: LinkWithStaticWeight
+{
     pub fn new(graph: Graph) -> SteppedDijkstra<Graph> {
         let n = graph.num_nodes();
 
@@ -83,7 +95,7 @@ impl<Graph: for<'a> LinkIterGraph<'a>> SteppedDijkstra<Graph> {
             // For each node we can reach, see if we can find a way with
             // a lower distance going through this node
             for edge in self.graph.neighbor_iter(node) {
-                let next = State { distance: distance + edge.weight, node: edge.node };
+                let next = State { distance: distance + edge.weight(), node: edge.head() };
 
                 // If so, add it to the frontier and continue
                 if next.distance < self.distances[next.node as usize] {

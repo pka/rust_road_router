@@ -51,7 +51,7 @@ impl<'a, Graph: for<'b> LinkIterGraph<'b>> ContractionGraph<'a, Graph> {
         let mut nodes: Vec<Node> = (0..n).map(|node| {
             let old_node_id = node_order.node(node);
             let edges = graph.neighbor_iter(old_node_id)
-                .map(|Link { node: neighbor, .. }| {
+                .map(|LinkData { node: neighbor, .. }| {
                     debug_assert_ne!(old_node_id, neighbor);
                     node_order.rank(neighbor)
                 })

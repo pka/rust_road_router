@@ -31,7 +31,7 @@ impl CCHGraph {
                 let graph = &graph;
                 let node_order = &node_order;
 
-                original_graph.neighbor_iter(node).map(move |Link { node: neighbor, .. }| {
+                original_graph.neighbor_iter(node).map(move |LinkData { node: neighbor, .. }| {
                     let node_rank = node_order.rank(node);
                     let neighbor_rank = node_order.rank(neighbor);
                     if node_rank < neighbor_rank {
@@ -93,7 +93,7 @@ impl CCHGraph {
 
         measure("CCH apply weights", || {
             for node in 0..n {
-                for (edge_id, Link { node: neighbor, weight }) in metric.neighbor_edge_indices(node).zip(metric.neighbor_iter(node)) {
+                for (edge_id, LinkData { node: neighbor, weight }) in metric.neighbor_edge_indices(node).zip(metric.neighbor_iter(node)) {
                     let ch_edge_id = self.original_edge_to_ch_edge[edge_id as usize];
 
                     if self.node_order.rank(node) < self.node_order.rank(neighbor) {
@@ -113,16 +113,16 @@ impl CCHGraph {
             let mut node_incoming_weights = vec![(INFINITY, InRangeOption::new(None)); n as usize];
 
             for current_node in 0..n {
-                for (Link { node, weight }, edge_id) in downward.neighbor_iter(current_node).zip(downward.neighbor_edge_indices(current_node)) {
+                for (LinkData { node, weight }, edge_id) in downward.neighbor_iter(current_node).zip(downward.neighbor_edge_indices(current_node)) {
                     node_incoming_weights[node as usize] = (weight, InRangeOption::new(Some(edge_id)));
                     debug_assert_eq!(downward.link(edge_id).node, node);
                 }
-                for (Link { node, weight }, edge_id) in upward.neighbor_iter(current_node).zip(upward.neighbor_edge_indices(current_node)) {
+                for (LinkData { node, weight }, edge_id) in upward.neighbor_iter(current_node).zip(upward.neighbor_edge_indices(current_node)) {
                     node_outgoing_weights[node as usize] = (weight, InRangeOption::new(Some(edge_id)));
                     debug_assert_eq!(upward.link(edge_id).node, node);
                 }
 
-                for (Link { node, weight }, edge_id) in downward.neighbor_iter(current_node).zip(downward.neighbor_edge_indices(current_node)) {
+                for (LinkData { node, weight }, edge_id) in downward.neighbor_iter(current_node).zip(downward.neighbor_edge_indices(current_node)) {
                     debug_assert_eq!(self.edge_id_to_tail(edge_id), current_node);
                     let shortcut_edge_ids = upward.neighbor_edge_indices(node);
                     for ((&target, shortcut_weight), shortcut_edge_id) in upward.mut_weight_link_iter(node).zip(shortcut_edge_ids) {
@@ -134,7 +134,7 @@ impl CCHGraph {
                         }
                     }
                 }
-                for (Link { node, weight }, edge_id) in upward.neighbor_iter(current_node).zip(upward.neighbor_edge_indices(current_node)) {
+                for (LinkData { node, weight }, edge_id) in upward.neighbor_iter(current_node).zip(upward.neighbor_edge_indices(current_node)) {
                     debug_assert_eq!(self.edge_id_to_tail(edge_id), current_node);
                     let shortcut_edge_ids = downward.neighbor_edge_indices(node);
                     for ((&target, shortcut_weight), shortcut_edge_id) in downward.mut_weight_link_iter(node).zip(shortcut_edge_ids) {
@@ -147,10 +147,10 @@ impl CCHGraph {
                     }
                 }
 
-                for Link { node, .. } in downward.neighbor_iter(current_node) {
+                for LinkData { node, .. } in downward.neighbor_iter(current_node) {
                     node_incoming_weights[node as usize] = (INFINITY, InRangeOption::new(None));
                 }
-                for Link { node, .. } in upward.neighbor_iter(current_node) {
+                for LinkData { node, .. } in upward.neighbor_iter(current_node) {
                     node_outgoing_weights[node as usize] = (INFINITY, InRangeOption::new(None));
                 }
             }

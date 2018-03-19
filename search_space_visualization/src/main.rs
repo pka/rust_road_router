@@ -126,7 +126,7 @@ fn main() {
     for node in 0..graph.num_nodes() {
         let node_in_searchspace = query_server.is_in_searchspace(node as NodeId);
 
-        for Link { node: neighbor, .. } in graph.neighbor_iter(node as NodeId) {
+        for LinkData { node: neighbor, .. } in graph.neighbor_iter(node as NodeId) {
             if (lat[node as usize] <= max_lat && lat[node as usize] >= min_lat && lon[node as usize] <= max_lon && lon[node as usize] >= min_lon)
                 || (lat[neighbor as usize] <= max_lat && lat[neighbor as usize] >= min_lat && lon[neighbor as usize] <= max_lon && lon[neighbor as usize] >= min_lon) {
                 let mut line = Line::new()

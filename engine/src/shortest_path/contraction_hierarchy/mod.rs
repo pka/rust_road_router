@@ -9,8 +9,8 @@ enum ShortcutResult {
 
 #[derive(Debug)]
 struct Node {
-    outgoing: Vec<(Link, NodeId)>,
-    incoming: Vec<(Link, NodeId)>
+    outgoing: Vec<(LinkData, NodeId)>,
+    incoming: Vec<(LinkData, NodeId)>
 }
 
 impl Node {
@@ -22,8 +22,8 @@ impl Node {
         Node::insert_or_decrease(&mut self.incoming, from, weight, over)
     }
 
-    fn insert_or_decrease(links: &mut Vec<(Link, NodeId)>, node: NodeId, weight: Weight, over: NodeId) -> ShortcutResult {
-        for &mut (Link { node: other, weight: ref mut other_weight }, ref mut shortcut_middle) in links.iter_mut() {
+    fn insert_or_decrease(links: &mut Vec<(LinkData, NodeId)>, node: NodeId, weight: Weight, over: NodeId) -> ShortcutResult {
+        for &mut (LinkData { node: other, weight: ref mut other_weight }, ref mut shortcut_middle) in links.iter_mut() {
             if node == other {
                 if weight < *other_weight {
                     *shortcut_middle = over;
@@ -35,17 +35,17 @@ impl Node {
             }
         }
 
-        links.push((Link { node, weight }, over));
+        links.push((LinkData { node, weight }, over));
         ShortcutResult::NewShortcut
     }
 
     fn remove_outgoing(&mut self, to: NodeId) {
-        let pos = self.outgoing.iter().position(|&(Link { node, .. }, _)| to == node).unwrap();
+        let pos = self.outgoing.iter().position(|&(LinkData { node, .. }, _)| to == node).unwrap();
         self.outgoing.swap_remove(pos);
     }
 
     fn remove_incmoing(&mut self, from: NodeId) {
-        let pos = self.incoming.iter().position(|&(Link { node, .. }, _)| from == node).unwrap();
+        let pos = self.incoming.iter().position(|&(LinkData { node, .. }, _)| from == node).unwrap();
         self.incoming.swap_remove(pos);
     }
 }
@@ -57,7 +57,11 @@ struct ContractionGraph {
 }
 
 impl ContractionGraph {
-    fn new<Graph: for<'a> LinkIterGraph<'a>>(graph: Graph, node_order: Vec<NodeId>) -> ContractionGraph {
+    fn new<Graph>(graph: Graph, node_order: Vec<NodeId>) -> ContractionGraph
+    where
+        Graph: for<'a> LinkIterGraph<'a>,
+        for<'a> <Graph as LinkIterGraph<'a>>::Link: LinkWithStaticWeight
+    {
         let n = graph.num_nodes();
         let mut node_ranks = vec![0; n];
         for (i, &node) in node_order.iter().enumerate() {
@@ -67,13 +71,13 @@ impl ContractionGraph {
         let nodes = {
             let outs = (0..n).map(|node|
                 graph.neighbor_iter(node_order[node])
-                    .map(|Link { node, weight }| (Link { node: node_ranks[node as usize], weight }, n as NodeId))
+                    .map(|link| (LinkData { node: node_ranks[link.head() as usize], weight: link.weight() }, n as NodeId))
                     .collect()
             );
             let reversed = graph.reverse();
             let ins = (0..n).map(|node|
                 reversed.neighbor_iter(node_order[node])
-                    .map(|Link { node, weight }| (Link { node: node_ranks[node as usize], weight }, n as NodeId))
+                    .map(|LinkData { node, weight }| (LinkData { node: node_ranks[node as usize], weight }, n as NodeId))
                     .collect()
             );
             outs.zip(ins).map(|(outgoing, incoming)| Node { outgoing, incoming } ).collect()
@@ -89,8 +93,8 @@ impl ContractionGraph {
         let mut graph = self.partial_graph();
 
         while let Some((node, mut subgraph)) = graph.remove_lowest() {
-            for &(Link { node: from, weight: from_weight }, _) in node.incoming.iter() {
-                for &(Link { node: to, weight: to_weight }, _) in node.outgoing.iter() {
+            for &(LinkData { node: from, weight: from_weight }, _) in node.incoming.iter() {
+                for &(LinkData { node: to, weight: to_weight }, _) in node.outgoing.iter() {
                     if subgraph.shortcut_required(from, to, from_weight + to_weight) {
                         let node_id = subgraph.id_offset - 1;
                         subgraph.insert_or_decrease(from, to, from_weight + to_weight, node_id);
@@ -110,13 +114,13 @@ impl ContractionGraph {
     }
 
     fn as_first_out_graphs(self) -> ((OwnedGraph, OwnedGraph), Option<(Vec<NodeId>, Vec<NodeId>)>) {
-        let (outgoing, incoming): (Vec<(Vec<Link>, Vec<NodeId>)>, Vec<(Vec<Link>, Vec<NodeId>)>) = self.nodes.into_iter()
+        let (outgoing, incoming): (Vec<(Vec<LinkData>, Vec<NodeId>)>, Vec<(Vec<LinkData>, Vec<NodeId>)>) = self.nodes.into_iter()
             .map(|node| {
                 (node.outgoing.into_iter().unzip(), node.incoming.into_iter().unzip())
             }).unzip();
 
-        let (outgoing, forward_shortcut_middles): (Vec<Vec<Link>>, Vec<Vec<NodeId>>) = outgoing.into_iter().unzip();
-        let (incoming, backward_shortcut_middles): (Vec<Vec<Link>>, Vec<Vec<NodeId>>) = incoming.into_iter().unzip();
+        let (outgoing, forward_shortcut_middles): (Vec<Vec<LinkData>>, Vec<Vec<NodeId>>) = outgoing.into_iter().unzip();
+        let (incoming, backward_shortcut_middles): (Vec<Vec<LinkData>>, Vec<Vec<NodeId>>) = incoming.into_iter().unzip();
         let forward_shortcut_middles = forward_shortcut_middles.into_iter().flat_map(|data| data.into_iter() ).collect();
         let backward_shortcut_middles = backward_shortcut_middles.into_iter().flat_map(|data| data.into_iter() ).collect();
 
@@ -145,10 +149,10 @@ impl<'a> PartialContractionGraph<'a> {
     }
 
     fn remove_edges_to_removed(&mut self, node: &Node) {
-        for &(Link { node: from, .. }, _) in node.incoming.iter() {
+        for &(LinkData { node: from, .. }, _) in node.incoming.iter() {
             self.nodes[(from - self.id_offset) as usize].remove_outgoing(self.id_offset - 1);
         }
-        for &(Link { node: to, .. }, _) in node.outgoing.iter() {
+        for &(LinkData { node: to, .. }, _) in node.outgoing.iter() {
             self.nodes[(to - self.id_offset) as usize].remove_incmoing(self.id_offset - 1);
         }
     }
@@ -178,7 +182,11 @@ impl<'a> PartialContractionGraph<'a> {
     }
 }
 
-pub fn contract<Graph: for<'a> LinkIterGraph<'a>>(graph: Graph, node_order: Vec<NodeId>) -> ((OwnedGraph, OwnedGraph), Option<(Vec<NodeId>, Vec<NodeId>)>) {
+pub fn contract<Graph>(graph: Graph, node_order: Vec<NodeId>) -> ((OwnedGraph, OwnedGraph), Option<(Vec<NodeId>, Vec<NodeId>)>)
+where
+    Graph: for<'a> LinkIterGraph<'a>,
+    for<'a> <Graph as LinkIterGraph<'a>>::Link: LinkWithStaticWeight
+{
     let mut graph = ContractionGraph::new(graph, node_order);
     graph.contract();
     graph.as_first_out_graphs()
@@ -209,16 +217,16 @@ impl<'a> Graph for BackwardWrapper<'a> {
 // workaround until we get an implementation of https://github.com/rust-lang/rfcs/pull/2071
 #[derive(Debug)]
 struct LinkMappingIterator<'a> {
-    iter: std::slice::Iter<'a, (Link, NodeId)>,
+    iter: std::slice::Iter<'a, (LinkData, NodeId)>,
     offset: NodeId,
 }
 
 impl<'a> Iterator for LinkMappingIterator<'a> {
-    type Item = Link;
+    type Item = LinkData;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.iter.next() {
-            Some(&(Link { node: target, weight }, _)) => Some(Link { node: target - self.offset, weight }),
+            Some(&(LinkData { node: target, weight }, _)) => Some(LinkData { node: target - self.offset, weight }),
             None => None,
         }
     }
@@ -226,6 +234,7 @@ impl<'a> Iterator for LinkMappingIterator<'a> {
 
 use std;
 impl<'a, 'b> LinkIterGraph<'b> for ForwardWrapper<'a> {
+    type Link = LinkData;
     type Iter = LinkMappingIterator<'b>;
 
     fn neighbor_iter(&'b self, node: NodeId) -> Self::Iter {
@@ -237,6 +246,7 @@ impl<'a, 'b> LinkIterGraph<'b> for ForwardWrapper<'a> {
 }
 
 impl<'a, 'b> LinkIterGraph<'b> for BackwardWrapper<'a> {
+    type Link = LinkData;
     type Iter = LinkMappingIterator<'b>;
 
     fn neighbor_iter(&'b self, node: NodeId) -> Self::Iter {

@@ -3,11 +3,19 @@ use super::*;
 use std::collections::LinkedList;
 
 #[derive(Debug)]
-pub struct Server<Graph: for<'a> LinkIterGraph<'a>> {
+pub struct Server<Graph>
+where
+    Graph: for<'a> LinkIterGraph<'a>,
+    <Graph as LinkIterGraph<'static>>::Link: LinkWithStaticWeight
+{
     dijkstra: SteppedDijkstra<Graph>,
 }
 
-impl<Graph: for<'a> LinkIterGraph<'a>> Server<Graph> {
+impl<Graph> Server<Graph>
+where
+    Graph: for<'a> LinkIterGraph<'a>,
+    for<'a> <Graph as LinkIterGraph<'a>>::Link: LinkWithStaticWeight
+{
     pub fn new(graph: Graph) -> Server<Graph> {
         Server {
             dijkstra: SteppedDijkstra::new(graph)
